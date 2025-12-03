@@ -3,7 +3,9 @@ package tools
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	"genai-mcp/common"
 	"genai-mcp/internal/genai/gemini"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -26,14 +28,27 @@ func RegisterGeminiTools(s *server.MCPServer, geminiClient gemini.GenimiIface) e
 		// 获取参数
 		prompt, err := req.RequireString("prompt")
 		if err != nil {
+			common.WithError(err).Error("Failed to get prompt parameter")
 			return mcp.NewToolResultError(fmt.Sprintf("prompt parameter is required: %v", err)), nil
 		}
+
+		common.WithField("prompt", prompt).Info("Generating image with Gemini")
 
 		// 调用 Gemini 生成图片
 		imageURL, err := geminiClient.GenerateImage(ctx, prompt)
 		if err != nil {
+			common.WithError(err).WithField("prompt", prompt).Error("Failed to generate image")
 			return mcp.NewToolResultError(fmt.Sprintf("failed to generate image: %v", err)), nil
 		}
+
+		// 日志中避免输出完整 base64 内容
+		fields := map[string]interface{}{
+			"prompt": prompt,
+		}
+		for k, v := range imageLogFields("image_url", imageURL) {
+			fields[k] = v
+		}
+		common.WithFields(fields).Info("Image generated successfully")
 
 		// 返回结果
 		return mcp.NewToolResultText(fmt.Sprintf("Generated image: %s", imageURL)), nil
@@ -57,23 +72,65 @@ func RegisterGeminiTools(s *server.MCPServer, geminiClient gemini.GenimiIface) e
 		// 获取参数
 		prompt, err := req.RequireString("prompt")
 		if err != nil {
+			common.WithError(err).Error("Failed to get prompt parameter")
 			return mcp.NewToolResultError(fmt.Sprintf("prompt parameter is required: %v", err)), nil
 		}
 
 		imageURL, err := req.RequireString("image_url")
 		if err != nil {
+			common.WithError(err).Error("Failed to get image_url parameter")
 			return mcp.NewToolResultError(fmt.Sprintf("image_url parameter is required: %v", err)), nil
 		}
+
+		fields := map[string]interface{}{
+			"prompt": prompt,
+		}
+		for k, v := range imageLogFields("image_url", imageURL) {
+			fields[k] = v
+		}
+		common.WithFields(fields).Info("Editing image with Gemini")
 
 		// 调用 Gemini 编辑图片
 		editedImageURL, err := geminiClient.EditImage(ctx, prompt, imageURL)
 		if err != nil {
+			errFields := map[string]interface{}{
+				"prompt": prompt,
+			}
+			for k, v := range imageLogFields("image_url", imageURL) {
+				errFields[k] = v
+			}
+			common.WithError(err).WithFields(errFields).Error("Failed to edit image")
 			return mcp.NewToolResultError(fmt.Sprintf("failed to edit image: %v", err)), nil
 		}
 
-		// 返回结果
+		successFields := map[string]interface{}{
+			"prompt": prompt,
+		}
+		for k, v := range imageLogFields("image_url", imageURL) {
+			successFields[k] = v
+		}
+		for k, v := range imageLogFields("edited_url", editedImageURL) {
+			successFields[k] = v
+		}
+		common.WithFields(successFields).Info("Image edited successfully")
+
+		// 返回结果（这里可以包含完整 base64 或 URL，因为这是返回给调用方，而不是日志）
 		return mcp.NewToolResultText(fmt.Sprintf("Edited image: %s", editedImageURL)), nil
 	})
 
 	return nil
+}
+
+// imageLogFields 生成用于日志的图片字段，避免在日志中打印完整 base64 内容
+// - 对于 data URI，仅记录是否为 data URI 以及长度
+// - 对于普通 URL，记录完整 URL（通常为短链接或 OSS URL）
+func imageLogFields(fieldName, ref string) map[string]interface{} {
+	fields := map[string]interface{}{}
+	if strings.HasPrefix(ref, "data:") {
+		fields[fieldName+"_is_data_uri"] = true
+		fields[fieldName+"_length"] = len(ref)
+	} else if ref != "" {
+		fields[fieldName] = ref
+	}
+	return fields
 }

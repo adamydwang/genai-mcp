@@ -1,0 +1,208 @@
+## GenAI MCP 服务器（中文说明）
+
+本项目实现了一个 **Model Context Protocol (MCP)** 服务器，用于：
+
+- 使用 **Google Gemini**（通过 `google.golang.org/genai`）进行 **文生图**（generate image）
+- 使用 **Google Gemini** 进行 **图像编辑**（edit image）
+- 可选：将生成 / 编辑后的图片自动上传到 **S3 兼容对象存储**（如 AWS S3、阿里云 OSS 等），并返回图片 URL
+
+服务器通过 **streamable HTTP** 暴露 MCP 端点，并提供两个工具：
+
+- `gemini_generate_image` – 文本 → 图片
+- `gemini_edit_image` – （图片 + 文本）→ 新图片
+
+你可以通过配置：
+
+- 输出是 **base64 data URI**（`data:image/...;base64,...`）还是 **对象存储 URL**
+- 是否以及如何上传图片到 OSS / S3
+- 日志级别、格式、输出方式
+- 每次请求的超时时间
+
+### Gemini / Nano Banana 第三方支持情况
+
+当前 MCP 服务器支持以下 Gemini / Nano Banana 后端：
+
+1. **Google 官方 Gemini API**  
+   - 使用默认 `GENAI_BASE_URL=https://generativelanguage.googleapis.com`  
+   - `GENAI_API_KEY` 为 Google 官方 Gemini API Key
+
+2. **dmxapi（兼容 Gemini 的第三方网关）**  
+   - 将 `GENAI_BASE_URL` 配置为 dmxapi 提供的 Gemini 兼容地址（如 `https://www.dmxapi.cn`）  
+   - `GENAI_API_KEY` 使用 dmxapi 下发的密钥
+
+---
+
+### 1. 环境依赖
+
+- Go **1.21+**（推荐）
+- 有效的 Gemini API Key
+- （可选）S3 / OSS 对象存储桶，用于保存图片
+
+---
+
+### 2. 配置（`.env`）
+
+先复制 `env.example` 为 `.env`，然后填写实际值。
+
+**GenAI 配置**
+
+```env
+GENAI_BASE_URL=https://generativelanguage.googleapis.com
+GENAI_API_KEY=your_api_key_here
+GENAI_MODEL_NAME=gemini-3-pro-image-preview
+
+# 单次请求超时时间（秒），包括生成图和编辑图
+GENAI_TIMEOUT_SECONDS=120
+
+# 图片输出格式：
+# - base64: 返回 base64 编码的 data URI
+# - url:    上传到 OSS 并返回图片 URL
+GENAI_IMAGE_FORMAT=base64
+```
+
+**HTTP 服务配置**
+
+```env
+SERVER_ADDRESS=0.0.0.0
+SERVER_PORT=8080
+```
+
+MCP 端点地址：
+
+```text
+http://SERVER_ADDRESS:SERVER_PORT/mcp
+```
+
+**OSS / S3 配置（当 `GENAI_IMAGE_FORMAT=url` 时必需）**
+
+```env
+# 对于 AWS S3：OSS_ENDPOINT 留空或设为 s3.amazonaws.com
+# 对于阿里云 OSS：设为 oss-cn-beijing.aliyuncs.com（根据你的 region）
+# 对于腾讯 COS：设为 cos.ap-guangzhou.myqcloud.com（根据你的 region）
+# 对于 MinIO：设为你的 MinIO 端点
+OSS_ENDPOINT=
+OSS_REGION=us-east-1
+OSS_ACCESS_KEY=your_access_key_here
+OSS_SECRET_KEY=your_secret_key_here
+OSS_BUCKET=your_bucket_name
+```
+
+当 `GENAI_IMAGE_FORMAT=url`：
+
+- 对阿里云 OSS：
+  - `OSS_ENDPOINT` 应该是 `oss-<region>.aliyuncs.com` 形式
+  - Bucket 策略需要允许你期望的访问方式（例如公开读）
+
+**日志配置**
+
+```env
+LOG_LEVEL=info   # 日志级别: debug, info, warn, error
+LOG_FORMAT=text  # 日志格式: text 或 json
+LOG_OUTPUT=stdout  # 输出到: stdout, stderr, file
+LOG_FILE=logs/app.log  # 当 LOG_OUTPUT=file 时生效
+```
+
+日志特性：
+
+- 带有时间、级别、文件名与行号（例如 `file="client.go:120"`）
+- 使用结构化字段记录上下文信息（如 `model`, `bucket`, `key` 等）
+- **不会**打印完整图片 base64 内容，仅记录长度等元信息
+
+---
+
+### 3. 启动 MCP 服务器
+
+在项目根目录执行：
+
+```bash
+go run ./server.go
+```
+
+默认 MCP HTTP 端点为：
+
+```text
+http://127.0.0.1:8080/mcp
+```
+
+你可以在任何支持 MCP `streamable-http` 协议的客户端中配置此端点。
+
+---
+
+### 4. MCP 工具说明
+
+定义位置：`internal/tools/gemini.go`
+
+- **`gemini_generate_image`**
+  - **输入：**
+    - `prompt`（string，必填）：描述要生成图片内容的文本
+  - **输出：**
+    - `GENAI_IMAGE_FORMAT=base64`：返回 base64 data URI
+    - `GENAI_IMAGE_FORMAT=url`：上传到 OSS/S3 后返回图片 URL
+
+- **`gemini_edit_image`**
+  - **输入：**
+    - `prompt`（string，必填）：描述如何编辑图片
+    - `image_url`（string，必填）：原始图片 URL 或 data URI
+  - **输出：**
+    - 同上，取决于 `GENAI_IMAGE_FORMAT`
+
+当 `GENAI_IMAGE_FORMAT=url` 时：
+
+- 生成 / 编辑后的图片会：
+  - 若 Gemini 返回 URL：先下载图片
+  - 若返回内联数据：直接使用数据
+  - 之后上传到 OSS/S3
+  - 路径格式：`images/yyyy-MM-dd/{uuid_timestamp_random}.ext`
+
+---
+
+### 5. Python 测试脚本
+
+`tests` 目录下包含一组用于本地调试的 Python 脚本：
+
+- `mcp_client.py`：简单的 MCP HTTP 客户端封装
+- `test_list_tools.py`：测试列出所有 MCP 工具
+- `test_generate_image.py`：测试文生图
+- `test_edit_image.py`：测试图像编辑
+- `run_all_tests.py`：顺序运行上述所有测试
+
+安装依赖：
+
+```bash
+cd tests
+pip install -r requirements.txt
+```
+
+在 MCP 服务器已运行的前提下运行测试（默认 `http://127.0.0.1:8080/mcp`）：
+
+```bash
+python test_list_tools.py
+python test_generate_image.py "A beautiful sunset over mountains"
+python test_edit_image.py "Make it blue" "https://example.com/image.jpg"
+```
+
+---
+
+### 6. 日志与排错建议
+
+- 查看服务器日志可以快速定位问题位置（文件 + 行号）。
+- 与图片内容相关的日志仅包含：
+  - 是否为 data URI (`is_data_uri`)
+  - 是否为 HTTP URL (`is_http_url`)
+  - 字符串长度 (`length`)
+- 对象存储相关问题（特别是阿里云 OSS）可从日志中查看：
+  - HTTP 状态码
+  - 请求的 bucket / key
+  - 使用的 endpoint 与 region
+
+如有额外需求（增加新的 MCP 工具、支持更多存储类型、扩展日志内容等），可以在现有结构基础上很方便地扩展。
+
+---
+
+### 7. 交流方式
+
+- **微信**：请扫码下方二维码添加好友  
+
+  ![微信二维码](assets/wechat_qrcode.png)
+
+- **Discord**：用户名 `adamydwang`

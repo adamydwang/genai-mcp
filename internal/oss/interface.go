@@ -14,7 +14,7 @@ type OSSIface interface {
 	// expiresIn 为过期时间（秒）
 	GetSignedURL(ctx context.Context, bucket, key string, expiresIn int64) (string, error)
 
-	// UploadFileWithSignedURL 上传文件并返回带签名的 URL
+	// UploadFileWithURL 上传文件并返回 URL
 	// 这是一个便捷方法，结合了 UploadFile 和 GetSignedURL
-	UploadFileWithSignedURL(ctx context.Context, bucket, key string, reader io.Reader, contentType string, expiresIn int64) (string, error)
+	UploadFileWithURL(ctx context.Context, bucket, key string, reader io.Reader, contentType string, expiresIn int64) (string, error)
 }

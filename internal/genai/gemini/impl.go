@@ -3,6 +3,8 @@ package gemini
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
 	"genai-mcp/common"
 	"genai-mcp/internal/oss"
@@ -15,16 +17,22 @@ type GeminiClient struct {
 
 // NewGeminiClientFromConfig 从配置创建 Gemini 客户端
 func NewGeminiClientFromConfig(cfg *common.Config) (*GeminiClient, error) {
+	// 根据 GENAI_IMAGE_FORMAT 决定是否上传到 OSS
+	// 当格式为 "url" 时，启用 OSS 上传；否则直接返回 base64/data URI
+	ossUploadEnabled := strings.EqualFold(cfg.GenAIImageFormat, "url")
+
 	config := Config{
 		APIKey:           cfg.GenAIAPIKey,
 		BaseURL:          cfg.GenAIBaseURL,
 		ModelName:        cfg.GenAIModelName,
-		OSSUploadEnabled: cfg.OSSUploadEnabled,
+		OSSUploadEnabled: ossUploadEnabled,
 		OSSBucket:        cfg.OSSBucket,
+		ImageFormat:      cfg.GenAIImageFormat,
+		Timeout:          time.Duration(cfg.GenAITimeoutSeconds) * time.Second,
 	}
 
 	// 如果启用了 OSS 上传，创建 OSS 客户端
-	if cfg.OSSUploadEnabled {
+	if ossUploadEnabled {
 		ossClient, err := oss.NewOSSClientFromConfig(cfg)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create OSS client: %w", err)

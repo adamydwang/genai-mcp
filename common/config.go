@@ -3,6 +3,7 @@ package common
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/joho/godotenv"
 )
@@ -15,12 +16,20 @@ type Config struct {
 	ServerAddress  string
 	ServerPort     string
 	// OSS 配置
-	OSSEndpoint      string
-	OSSRegion        string
-	OSSAccessKey     string
-	OSSSecretKey     string
-	OSSBucket        string
-	OSSUploadEnabled bool // 是否启用 OSS 上传
+	OSSEndpoint  string
+	OSSRegion    string
+	OSSAccessKey string
+	OSSSecretKey string
+	OSSBucket    string
+	// 图片输出格式: base64 或 url
+	GenAIImageFormat string
+	// GenAI 请求超时时间（秒）
+	GenAITimeoutSeconds int
+	// 日志配置
+	LogLevel  string // 日志级别: debug, info, warn, error
+	LogFormat string // 日志格式: json, text
+	LogOutput string // 输出位置: stdout, stderr, file
+	LogFile   string // 日志文件路径（当 LogOutput 为 file 时）
 }
 
 // LoadConfig 从 .env 文件加载配置
@@ -38,17 +47,34 @@ func LoadConfig() (*Config, error) {
 		ServerAddress:  getEnv("SERVER_ADDRESS", "0.0.0.0"),
 		ServerPort:     getEnv("SERVER_PORT", "8080"),
 		// OSS 配置
-		OSSEndpoint:      getEnv("OSS_ENDPOINT", ""),
-		OSSRegion:        getEnv("OSS_REGION", "us-east-1"),
-		OSSAccessKey:     getEnv("OSS_ACCESS_KEY", ""),
-		OSSSecretKey:     getEnv("OSS_SECRET_KEY", ""),
-		OSSBucket:        getEnv("OSS_BUCKET", ""),
-		OSSUploadEnabled: getEnvBool("OSS_UPLOAD_ENABLED", false),
+		OSSEndpoint:         getEnv("OSS_ENDPOINT", ""),
+		OSSRegion:           getEnv("OSS_REGION", "us-east-1"),
+		OSSAccessKey:        getEnv("OSS_ACCESS_KEY", ""),
+		OSSSecretKey:        getEnv("OSS_SECRET_KEY", ""),
+		OSSBucket:           getEnv("OSS_BUCKET", ""),
+		GenAIImageFormat:    getEnv("GENAI_IMAGE_FORMAT", "base64"),
+		GenAITimeoutSeconds: getEnvInt("GENAI_TIMEOUT_SECONDS", 60),
+		// 日志配置
+		LogLevel:  getEnv("LOG_LEVEL", "info"),
+		LogFormat: getEnv("LOG_FORMAT", "text"),
+		LogOutput: getEnv("LOG_OUTPUT", "stdout"),
+		LogFile:   getEnv("LOG_FILE", ""),
 	}
 
 	// 验证必需的配置项
 	if config.GenAIAPIKey == "" {
 		return nil, fmt.Errorf("GENAI_API_KEY is required")
+	}
+
+	// 初始化日志系统
+	logConfig := &LogConfig{
+		Level:    config.LogLevel,
+		Format:   config.LogFormat,
+		Output:   config.LogOutput,
+		FilePath: config.LogFile,
+	}
+	if err := InitLogger(logConfig); err != nil {
+		return nil, fmt.Errorf("failed to initialize logger: %w", err)
 	}
 
 	return config, nil
@@ -69,6 +95,18 @@ func getEnvBool(key string, defaultValue bool) bool {
 		return defaultValue
 	}
 	return value == "true" || value == "1" || value == "yes" || value == "on"
+}
+
+// getEnvInt 获取整型环境变量
+func getEnvInt(key string, defaultValue int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	if i, err := strconv.Atoi(value); err == nil {
+		return i
+	}
+	return defaultValue
 }
 
 // GetServerAddr 返回完整的服务器地址
