@@ -1,0 +1,88 @@
+package common
+
+import (
+	"fmt"
+	"os"
+
+	"github.com/joho/godotenv"
+)
+
+// Config 应用配置结构
+type Config struct {
+	GenAIBaseURL   string
+	GenAIAPIKey    string
+	GenAIModelName string
+	ServerAddress  string
+	ServerPort     string
+	// OSS 配置
+	OSSEndpoint      string
+	OSSRegion        string
+	OSSAccessKey     string
+	OSSSecretKey     string
+	OSSBucket        string
+	OSSUploadEnabled bool // 是否启用 OSS 上传
+}
+
+// LoadConfig 从 .env 文件加载配置
+func LoadConfig() (*Config, error) {
+	// 加载 .env 文件（如果存在）
+	if err := godotenv.Load(); err != nil {
+		// .env 文件不存在时，尝试从环境变量读取
+		fmt.Println("Warning: .env file not found, using environment variables")
+	}
+
+	config := &Config{
+		GenAIBaseURL:   getEnv("GENAI_BASE_URL", ""),
+		GenAIAPIKey:    getEnv("GENAI_API_KEY", ""),
+		GenAIModelName: getEnv("GENAI_MODEL_NAME", ""),
+		ServerAddress:  getEnv("SERVER_ADDRESS", "0.0.0.0"),
+		ServerPort:     getEnv("SERVER_PORT", "8080"),
+		// OSS 配置
+		OSSEndpoint:      getEnv("OSS_ENDPOINT", ""),
+		OSSRegion:        getEnv("OSS_REGION", "us-east-1"),
+		OSSAccessKey:     getEnv("OSS_ACCESS_KEY", ""),
+		OSSSecretKey:     getEnv("OSS_SECRET_KEY", ""),
+		OSSBucket:        getEnv("OSS_BUCKET", ""),
+		OSSUploadEnabled: getEnvBool("OSS_UPLOAD_ENABLED", false),
+	}
+
+	// 验证必需的配置项
+	if config.GenAIAPIKey == "" {
+		return nil, fmt.Errorf("GENAI_API_KEY is required")
+	}
+
+	return config, nil
+}
+
+// getEnv 获取环境变量，如果不存在则返回默认值
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+// getEnvBool 获取布尔类型环境变量
+func getEnvBool(key string, defaultValue bool) bool {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	return value == "true" || value == "1" || value == "yes" || value == "on"
+}
+
+// GetServerAddr 返回完整的服务器地址
+func (c *Config) GetServerAddr() string {
+	return fmt.Sprintf("%s:%s", c.ServerAddress, c.ServerPort)
+}
+
+// GetOSSConfig 返回 OSS 配置，用于创建 OSS 客户端
+func (c *Config) GetOSSConfig() map[string]string {
+	return map[string]string{
+		"endpoint":  c.OSSEndpoint,
+		"region":    c.OSSRegion,
+		"accessKey": c.OSSAccessKey,
+		"secretKey": c.OSSSecretKey,
+		"bucket":    c.OSSBucket,
+	}
+}
