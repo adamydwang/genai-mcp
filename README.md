@@ -7,12 +7,6 @@ The server exposes a **streamable HTTP MCP endpoint** and provides two tools:
 - `gemini_generate_image` – text → image
 - `gemini_edit_image` – image + text → edited image
 
-You can control:
-
-- Whether the final output should be **base64 data URI** or an **object storage URL**
-- Whether and how images are uploaded to OSS / S3
-- Logging level / format / output
-- Request timeout
 
 ### Gemini / Nano Banana backend support
 
@@ -90,33 +84,31 @@ When `GENAI_IMAGE_FORMAT=url`:
   - `OSS_ENDPOINT` is like `oss-cn-beijing.aliyuncs.com`
   - The bucket policy allows read access if you expect the returned URL to be publicly accessible
 
-**Logging**
-
-```env
-LOG_LEVEL=info   # debug, info, warn, error
-LOG_FORMAT=text  # text or json
-LOG_OUTPUT=stdout  # stdout, stderr, file
-LOG_FILE=logs/app.log  # when LOG_OUTPUT=file
-```
-
-Logs include:
-
-- Timestamp
-- Level
-- File name and line number (`file="client.go:120"`)
-- Structured fields (model, bucket, key, etc.)
-
-Sensitive data (like full base64 image contents) are **never** logged.
-
 ---
 
 ### 3. Running the MCP Server
 
-In the project root:
+You can run the MCP server in **two ways**:
 
-```bash
-go run ./server.go
-```
+1. **Clone & build from source**
+   - Clone this repo and enter the project root  
+   - Copy `env.example` to `.env` and fill in your configuration  
+   - Run:
+
+     ```bash
+     go build .
+     ./genai-mcp
+     ```
+
+2. **Download release binary**
+   - Download the appropriate binary from the Releases page  
+   - Place it in a directory of your choice  
+   - Copy `env.example` from this repo (or from the release asset) to `.env` in the same directory and update configuration  
+   - Run (binary name may vary by platform):
+
+     ```bash
+     ./genai-mcp
+     ```
 
 By default the MCP HTTP endpoint will be:
 

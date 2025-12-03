@@ -64,6 +64,7 @@ $RECYCLE.BIN/
 /build/
 /bin/
 /tmp/
+/release/
 
 # Logs
 *.log

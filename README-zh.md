@@ -11,13 +11,6 @@
 - `gemini_generate_image` – 文本 → 图片
 - `gemini_edit_image` – （图片 + 文本）→ 新图片
 
-你可以通过配置：
-
-- 输出是 **base64 data URI**（`data:image/...;base64,...`）还是 **对象存储 URL**
-- 是否以及如何上传图片到 OSS / S3
-- 日志级别、格式、输出方式
-- 每次请求的超时时间
-
 ### Gemini / Nano Banana 第三方支持情况
 
 当前 MCP 服务器支持以下 Gemini / Nano Banana 后端：
@@ -93,30 +86,31 @@ OSS_BUCKET=your_bucket_name
   - `OSS_ENDPOINT` 应该是 `oss-<region>.aliyuncs.com` 形式
   - Bucket 策略需要允许你期望的访问方式（例如公开读）
 
-**日志配置**
-
-```env
-LOG_LEVEL=info   # 日志级别: debug, info, warn, error
-LOG_FORMAT=text  # 日志格式: text 或 json
-LOG_OUTPUT=stdout  # 输出到: stdout, stderr, file
-LOG_FILE=logs/app.log  # 当 LOG_OUTPUT=file 时生效
-```
-
-日志特性：
-
-- 带有时间、级别、文件名与行号（例如 `file="client.go:120"`）
-- 使用结构化字段记录上下文信息（如 `model`, `bucket`, `key` 等）
-- **不会**打印完整图片 base64 内容，仅记录长度等元信息
-
 ---
 
 ### 3. 启动 MCP 服务器
 
-在项目根目录执行：
+你可以通过 **两种方式** 启动 MCP 服务器：
 
-```bash
-go run ./server.go
-```
+1. **克隆代码并本地编译运行**
+   - 克隆本仓库并进入项目根目录  
+   - 将 `env.example` 复制为 `.env`，并填写你的实际配置  
+   - 执行：
+
+     ```bash
+     go build .
+     ./genai-mcp
+     ```
+
+2. **下载发布的二进制文件（Release binary）**
+   - 从 Releases 页面下载适合你平台的二进制文件  
+   - 放到任意目录  
+   - 将本仓库（或 Release 附带）的 `env.example` 复制到同一目录并改名为 `.env`，然后修改配置  
+   - 执行（文件名视实际发布而定）：
+
+     ```bash
+     ./genai-mcp
+     ```
 
 默认 MCP HTTP 端点为：
 
