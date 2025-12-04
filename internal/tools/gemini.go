@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -13,7 +14,7 @@ import (
 )
 
 // RegisterGeminiTools 注册 Gemini 图片生成和编辑的 MCP tools
-func RegisterGeminiTools(s *server.MCPServer, geminiClient gemini.GenimiIface) error {
+func RegisterGeminiTools(s *server.MCPServer, geminiClient gemini.GenimiIface, modelName string) error {
 	// 注册图片生成工具
 	generateImageTool := mcp.NewTool(
 		"gemini_generate_image",
@@ -54,17 +55,24 @@ func RegisterGeminiTools(s *server.MCPServer, geminiClient gemini.GenimiIface) e
 		return mcp.NewToolResultText(fmt.Sprintf("Generated image: %s", imageURL)), nil
 	})
 
+	// 根据模型名生成 description
+	maxImages := 1
+	if modelName == "gemini-3-pro-image-preview" {
+		maxImages = 14
+	}
+	editImageDescription := fmt.Sprintf("Edit images using Gemini AI based on a text prompt. Takes image URLs (array) and a prompt, returns the edited image URL or data URI. Model '%s' supports up to %d image(s).", modelName, maxImages)
+
 	// 注册图片编辑工具
 	editImageTool := mcp.NewTool(
 		"gemini_edit_image",
-		mcp.WithDescription("Edit an image using Gemini AI based on a text prompt. Takes an image URL and a prompt, returns the edited image URL or data URI."),
+		mcp.WithDescription(editImageDescription),
 		mcp.WithString("prompt",
 			mcp.Required(),
 			mcp.Description("Text prompt describing how to edit the image"),
 		),
-		mcp.WithString("image_url",
+		mcp.WithString("image_urls",
 			mcp.Required(),
-			mcp.Description("URL or data URI of the image to edit"),
+			mcp.Description("JSON array of image URLs or data URIs to edit. Example: [\"url1\", \"url2\"]"),
 		),
 	)
 
@@ -76,38 +84,43 @@ func RegisterGeminiTools(s *server.MCPServer, geminiClient gemini.GenimiIface) e
 			return mcp.NewToolResultError(fmt.Sprintf("prompt parameter is required: %v", err)), nil
 		}
 
-		imageURL, err := req.RequireString("image_url")
+		imageURLsJSON, err := req.RequireString("image_urls")
 		if err != nil {
-			common.WithError(err).Error("Failed to get image_url parameter")
-			return mcp.NewToolResultError(fmt.Sprintf("image_url parameter is required: %v", err)), nil
+			common.WithError(err).Error("Failed to get image_urls parameter")
+			return mcp.NewToolResultError(fmt.Sprintf("image_urls parameter is required: %v", err)), nil
+		}
+
+		// 解析 JSON 数组
+		var imageURLs []string
+		if err := json.Unmarshal([]byte(imageURLsJSON), &imageURLs); err != nil {
+			common.WithError(err).WithField("image_urls", imageURLsJSON).Error("Failed to parse image_urls as JSON array")
+			return mcp.NewToolResultError(fmt.Sprintf("image_urls must be a valid JSON array: %v", err)), nil
+		}
+
+		if len(imageURLs) == 0 {
+			return mcp.NewToolResultError("image_urls array cannot be empty"), nil
 		}
 
 		fields := map[string]interface{}{
-			"prompt": prompt,
-		}
-		for k, v := range imageLogFields("image_url", imageURL) {
-			fields[k] = v
+			"prompt":      prompt,
+			"image_count": len(imageURLs),
 		}
 		common.WithFields(fields).Info("Editing image with Gemini")
 
 		// 调用 Gemini 编辑图片
-		editedImageURL, err := geminiClient.EditImage(ctx, prompt, imageURL)
+		editedImageURL, err := geminiClient.EditImage(ctx, prompt, imageURLs)
 		if err != nil {
 			errFields := map[string]interface{}{
-				"prompt": prompt,
-			}
-			for k, v := range imageLogFields("image_url", imageURL) {
-				errFields[k] = v
+				"prompt":      prompt,
+				"image_count": len(imageURLs),
 			}
 			common.WithError(err).WithFields(errFields).Error("Failed to edit image")
 			return mcp.NewToolResultError(fmt.Sprintf("failed to edit image: %v", err)), nil
 		}
 
 		successFields := map[string]interface{}{
-			"prompt": prompt,
-		}
-		for k, v := range imageLogFields("image_url", imageURL) {
-			successFields[k] = v
+			"prompt":      prompt,
+			"image_count": len(imageURLs),
 		}
 		for k, v := range imageLogFields("edited_url", editedImageURL) {
 			successFields[k] = v

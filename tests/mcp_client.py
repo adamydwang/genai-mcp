@@ -165,19 +165,21 @@ class MCPClient:
         """
         return self.call_tool("gemini_generate_image", {"prompt": prompt})
     
-    def edit_image(self, prompt: str, image_url: str) -> Dict[str, Any]:
+    def edit_image(self, prompt: str, image_urls: list) -> Dict[str, Any]:
         """
-        Edit an image using Gemini
+        Edit images using Gemini
         
         Args:
             prompt: Text prompt describing how to edit the image
-            image_url: URL or data URI of the image to edit
+            image_urls: List of URLs or data URIs of the images to edit
             
         Returns:
             Edited image URL or data URI
         """
+        # Convert list to JSON string as required by the MCP tool
+        image_urls_json = json.dumps(image_urls)
         return self.call_tool("gemini_edit_image", {
             "prompt": prompt,
-            "image_url": image_url
+            "image_urls": image_urls_json
         })
 

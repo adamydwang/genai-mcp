@@ -51,7 +51,7 @@ func main() {
 
 	// 注册 Gemini tools
 	common.Info("Registering Gemini tools")
-	if err := tools.RegisterGeminiTools(mcpServer, geminiClient); err != nil {
+	if err := tools.RegisterGeminiTools(mcpServer, geminiClient, config.GenAIModelName); err != nil {
 		common.WithError(err).Fatal("Failed to register Gemini tools")
 	}
 	common.Info("Gemini tools registered successfully")

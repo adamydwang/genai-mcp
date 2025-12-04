@@ -188,11 +188,26 @@ func (c *Client) GenerateImage(ctx context.Context, prompt string) (string, erro
 }
 
 // EditImage 图片编辑：根据文本提示编辑图片
-func (c *Client) EditImage(ctx context.Context, prompt string, imageURL string) (string, error) {
+func (c *Client) EditImage(ctx context.Context, prompt string, imageURLs []string) (string, error) {
+	// 验证图片数量
+	maxImages := 1
+	if c.model == "gemini-3-pro-image-preview" {
+		maxImages = 14
+	}
+
+	if len(imageURLs) == 0 {
+		return "", fmt.Errorf("at least one image URL is required")
+	}
+
+	if len(imageURLs) > maxImages {
+		return "", fmt.Errorf("too many images: model %s supports at most %d images, got %d", c.model, maxImages, len(imageURLs))
+	}
+
 	common.WithFields(map[string]interface{}{
-		"model":     c.model,
-		"prompt":    prompt,
-		"image_url": imageURL,
+		"model":       c.model,
+		"prompt":      prompt,
+		"image_count": len(imageURLs),
+		"image_urls":  imageURLs,
 	}).Debug("Starting image editing")
 
 	// 为本次请求设置超时时间，避免无休止等待
@@ -200,31 +215,102 @@ func (c *Client) EditImage(ctx context.Context, prompt string, imageURL string) 
 	ctx, cancel = context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
-	// 从 URL 下载图片数据
-	imageData, mimeType, err := downloadImageFromURL(ctx, imageURL)
-	if err != nil {
-		common.WithError(err).WithFields(map[string]interface{}{
-			"image_url": imageURL,
-		}).Error("Failed to download image for editing")
-		return "", fmt.Errorf("failed to download image: %w", err)
+	// 构建请求内容：包含所有图片和编辑提示
+	parts := make([]*genai.Part, 0, len(imageURLs)+1)
+
+	// 处理所有图片并添加到 parts
+	for i, imageURL := range imageURLs {
+		var part *genai.Part
+
+		// 判断是 data URI 还是 HTTP/HTTPS URL
+		if strings.HasPrefix(imageURL, "data:") {
+			// 处理 data URI：需要解析为 InlineData
+			dataURIParts := strings.SplitN(imageURL, ",", 2)
+			if len(dataURIParts) != 2 {
+				return "", fmt.Errorf("invalid data URI format at index %d", i)
+			}
+
+			// 解析 MIME 类型
+			mimePart := strings.TrimSuffix(dataURIParts[0], ";base64")
+			mimeType := strings.TrimPrefix(mimePart, "data:")
+
+			// 解码 base64 数据
+			imageData, err := base64.StdEncoding.DecodeString(dataURIParts[1])
+			if err != nil {
+				common.WithError(err).WithFields(map[string]interface{}{
+					"image_url": truncateForLog(imageURL, 100),
+					"index":     i,
+				}).Error("Failed to decode data URI")
+				return "", fmt.Errorf("failed to decode data URI at index %d: %w", i, err)
+			}
+
+			common.WithFields(map[string]interface{}{
+				"index":     i,
+				"mime_type": mimeType,
+				"size":      len(imageData),
+				"type":      "data_uri",
+			}).Debug("Processed data URI image")
+
+			part = &genai.Part{
+				InlineData: &genai.Blob{
+					Data:     imageData,
+					MIMEType: mimeType,
+				},
+			}
+		} else if strings.HasPrefix(imageURL, "http://") || strings.HasPrefix(imageURL, "https://") {
+			// 处理 HTTP/HTTPS URL：直接使用 FileData，让 Gemini API 自己获取
+			mimeType := inferMimeTypeFromURL(imageURL)
+
+			common.WithFields(map[string]interface{}{
+				"image_url": imageURL,
+				"index":     i,
+				"mime_type": mimeType,
+				"type":      "http_url",
+			}).Debug("Using HTTP URL directly (no download)")
+
+			part = &genai.Part{
+				FileData: &genai.FileData{
+					FileURI:  imageURL,
+					MIMEType: mimeType,
+				},
+			}
+		} else {
+			// 其他格式的 URL，尝试下载后使用 InlineData
+			common.WithFields(map[string]interface{}{
+				"image_url": imageURL,
+				"index":     i,
+			}).Debug("Downloading image (unsupported URL format)")
+
+			imageData, mimeType, err := downloadImageFromURL(ctx, imageURL)
+			if err != nil {
+				common.WithError(err).WithFields(map[string]interface{}{
+					"image_url": imageURL,
+					"index":     i,
+				}).Error("Failed to download image for editing")
+				return "", fmt.Errorf("failed to download image at index %d: %w", i, err)
+			}
+
+			common.WithFields(map[string]interface{}{
+				"image_url": imageURL,
+				"index":     i,
+				"mime_type": mimeType,
+				"size":      len(imageData),
+				"type":      "downloaded",
+			}).Debug("Image downloaded successfully")
+
+			part = &genai.Part{
+				InlineData: &genai.Blob{
+					Data:     imageData,
+					MIMEType: mimeType,
+				},
+			}
+		}
+
+		parts = append(parts, part)
 	}
 
-	common.WithFields(map[string]interface{}{
-		"image_url": imageURL,
-		"mime_type": mimeType,
-		"size":      len(imageData),
-	}).Debug("Image downloaded successfully")
-
-	// 构建请求内容：包含图片和编辑提示
-	parts := []*genai.Part{
-		{
-			InlineData: &genai.Blob{
-				Data:     imageData,
-				MIMEType: mimeType,
-			},
-		},
-		{Text: prompt},
-	}
+	// 添加文本提示
+	parts = append(parts, &genai.Part{Text: prompt})
 
 	// 调用 GenerateContent API
 	result, err := c.client.Models.GenerateContent(ctx, c.model, []*genai.Content{
@@ -232,9 +318,9 @@ func (c *Client) EditImage(ctx context.Context, prompt string, imageURL string) 
 	}, nil)
 	if err != nil {
 		common.WithError(err).WithFields(map[string]interface{}{
-			"model":     c.model,
-			"prompt":    prompt,
-			"image_url": imageURL,
+			"model":       c.model,
+			"prompt":      prompt,
+			"image_count": len(imageURLs),
 		}).Error("Failed to edit image from Gemini API")
 		return "", fmt.Errorf("failed to edit image: %w", err)
 	}

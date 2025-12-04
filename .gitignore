@@ -75,7 +75,7 @@ logs/
 *.temp
 *.bak
 *.backup
-
+__pycache__
 # Test coverage
 coverage.html
 coverage.xml

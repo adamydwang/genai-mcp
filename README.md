@@ -16,7 +16,7 @@ This MCP server currently supports the following Gemini‑compatible backends:
    - Use the default `GENAI_BASE_URL=https://generativelanguage.googleapis.com`  
    - `GENAI_API_KEY` is a Google Gemini API key
 
-2. **dmxapi (Gemini‑compatible third‑party gateway)**  
+2. **dmxapi (Gemini‑compatible third‑party gateway, Easy to timeout for Nano Banana Pro)**  
    - Set `GENAI_BASE_URL` to the dmxapi Gemini endpoint (for example `https://www.dmxapi.cn`)  
    - `GENAI_API_KEY` is the key issued by dmxapi  
    - As long as the endpoint implements the `google.golang.org/genai` compatible Gemini API, no code changes are needed

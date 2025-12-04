@@ -56,8 +56,8 @@ func (g *GeminiClient) GenerateImage(ctx context.Context, prompt string) (string
 }
 
 // EditImage 实现 GenimiIface 接口的图片编辑方法
-func (g *GeminiClient) EditImage(ctx context.Context, prompt string, image_url string) (string, error) {
-	return g.client.EditImage(ctx, prompt, image_url)
+func (g *GeminiClient) EditImage(ctx context.Context, prompt string, image_urls []string) (string, error) {
+	return g.client.EditImage(ctx, prompt, image_urls)
 }
 
 // Close 关闭客户端

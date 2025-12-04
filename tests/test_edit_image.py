@@ -11,18 +11,32 @@ def main():
     """Test image editing"""
     # Parse command line arguments
     if len(sys.argv) < 3:
-        print("Usage: python test_edit_image.py <prompt> <image_url> [base_url]")
-        print("Example: python test_edit_image.py 'Make it blue' 'https://yiavatar-images-bj.oss-cn-beijing.aliyuncs.com/images/2025-12-03/0a2017bf-d54e-4858-ae94-6deaf5e16c2a_1764752000_b10b7006.png'")
+        print("Usage: python test_edit_image.py <prompt> <image_url> [image_url2] ... [base_url]")
+        print("Example: python test_edit_image.py 'Make it blue' 'https://example.com/image1.png'")
+        print("Example (multiple images): python test_edit_image.py 'Combine these' 'https://example.com/img1.png' 'https://example.com/img2.png'")
         return 1
     
     prompt = sys.argv[1]
-    image_url = sys.argv[2]
-    base_url = sys.argv[3] if len(sys.argv) > 3 else "http://127.0.0.1:8080/mcp"
+    # Get all image URLs (everything except the last arg if it's a URL, or all args after prompt)
+    # Check if last arg is a base_url (starts with http:// or https://)
+    args = sys.argv[2:]
+    if args and (args[-1].startswith("http://") or args[-1].startswith("https://")) and "mcp" in args[-1]:
+        base_url = args[-1]
+        image_urls = args[:-1]
+    else:
+        base_url = "http://127.0.0.1:8080/mcp"
+        image_urls = args
+    
+    if not image_urls:
+        print("Error: At least one image URL is required")
+        return 1
     
     print(f"Testing image editing with MCP server at: {base_url}")
     print("=" * 60)
     print(f"Prompt: {prompt}")
-    print(f"Image URL: {image_url}")
+    print(f"Image URLs ({len(image_urls)}):")
+    for i, url in enumerate(image_urls, 1):
+        print(f"  {i}. {url}")
     print("=" * 60)
     
     # Create MCP client
@@ -45,10 +59,12 @@ def main():
     
     # Edit image
     print(f"\n2. Editing image with prompt: '{prompt}'...")
-    print(f"   Image URL: {image_url}")
+    print(f"   Image URLs ({len(image_urls)}):")
+    for i, url in enumerate(image_urls, 1):
+        print(f"      {i}. {url}")
     print("   (This may take a while...)")
     
-    result = client.edit_image(prompt, image_url)
+    result = client.edit_image(prompt, image_urls)
     
     if "error" in result:
         print(f"❌ Failed to edit image: {result['error']}")
