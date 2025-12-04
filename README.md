@@ -176,45 +176,7 @@ When `GENAI_IMAGE_FORMAT=url`:
 
 ---
 
-### 5. Python Test Scripts
-
-There is a `tests` directory with ready‑to‑use Python scripts:
-
-- `mcp_client.py`: a simple MCP HTTP client wrapper
-- `test_list_tools.py`: list all tools exposed by the MCP server
-- `test_generate_image.py`: test image generation
-- `test_edit_image.py`: test image editing
-- `run_all_tests.py`: run the above tests in sequence
-
-Install dependencies:
-
-```bash
-cd tests
-pip install -r requirements.txt
-```
-
-Run tests (server must already be running on `http://127.0.0.1:8080/mcp`):
-
-```bash
-python test_list_tools.py
-python test_generate_image.py "A beautiful sunset over mountains"
-python test_edit_image.py "Make it blue" "https://example.com/image.jpg"
-```
-
----
-
-### 6. Logging & Debugging Notes
-
-- All key operations (Gemini calls, OSS uploads, HTTP errors) are logged with file name & line number.
-- Binary / base64 image data are **never** logged. Only lengths and flags (e.g. `is_data_uri`, `is_http_url`) are recorded when needed.
-- For OSS issues (e.g. Aliyun OSS), check logs for:
-  - HTTP status codes
-  - Bucket / key used
-  - Endpoint and region
-
----
-
-### 7. Contact
+### 5. Contact
 
 - **WeChat**: Scan the QR code below to add as a friend  
 

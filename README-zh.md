@@ -180,50 +180,7 @@ http://127.0.0.1:8080/mcp
 
 ---
 
-### 5. Python 测试脚本
-
-`tests` 目录下包含一组用于本地调试的 Python 脚本：
-
-- `mcp_client.py`：简单的 MCP HTTP 客户端封装
-- `test_list_tools.py`：测试列出所有 MCP 工具
-- `test_generate_image.py`：测试文生图
-- `test_edit_image.py`：测试图像编辑
-- `run_all_tests.py`：顺序运行上述所有测试
-
-安装依赖：
-
-```bash
-cd tests
-pip install -r requirements.txt
-```
-
-在 MCP 服务器已运行的前提下运行测试（默认 `http://127.0.0.1:8080/mcp`）：
-
-```bash
-python test_list_tools.py
-python test_generate_image.py "A beautiful sunset over mountains"
-python test_edit_image.py "Make it blue" "https://example.com/image.jpg"
-```
-
----
-
-### 6. 日志与排错建议
-
-- 查看服务器日志可以快速定位问题位置（文件 + 行号）。
-- 与图片内容相关的日志仅包含：
-  - 是否为 data URI (`is_data_uri`)
-  - 是否为 HTTP URL (`is_http_url`)
-  - 字符串长度 (`length`)
-- 对象存储相关问题（特别是阿里云 OSS）可从日志中查看：
-  - HTTP 状态码
-  - 请求的 bucket / key
-  - 使用的 endpoint 与 region
-
-如有额外需求（增加新的 MCP 工具、支持更多存储类型、扩展日志内容等），可以在现有结构基础上很方便地扩展。
-
----
-
-### 7. 交流方式
+### 5. 交流方式
 
 - **微信**：请扫码下方二维码添加好友  
 
