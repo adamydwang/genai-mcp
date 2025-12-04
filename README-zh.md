@@ -4,6 +4,7 @@
 
 - 使用 **Google Gemini**（通过 `google.golang.org/genai`）进行 **文生图**（generate image）
 - 使用 **Google Gemini** 进行 **图像编辑**（edit image）
+- 使用 **通义万相（阿里百炼）** 图片接口进行文生图 / 图像编辑（通过 DashScope）
 - 可选：将生成 / 编辑后的图片自动上传到 **S3 兼容对象存储**（如 AWS S3、阿里云 OSS 等），并返回图片 URL
 
 服务器通过 **streamable HTTP** 暴露 MCP 端点，并提供两个工具：
@@ -23,6 +24,24 @@
    - 将 `GENAI_BASE_URL` 配置为 dmxapi 提供的 Gemini 兼容地址（如 `https://www.dmxapi.cn`）  
    - `GENAI_API_KEY` 使用 dmxapi 下发的密钥
 
+### 通义万相（阿里百炼）模型支持
+
+当 `GENAI_PROVIDER=wan` 时，服务器会使用 **通义万相**（阿里百炼 DashScope）而不是 Gemini：
+
+- 配置示例：
+  - `GENAI_PROVIDER=wan`
+  - `GENAI_BASE_URL=https://dashscope.aliyuncs.com`
+  - `GENAI_API_KEY=<你的 DashScope API Key>`
+  - `GENAI_GEN_MODEL_NAME=wan2.5-t2i-preview`（文生图模型）
+  - `GENAI_EDIT_MODEL_NAME=wan2.5-i2i-preview`（图像编辑 / 融合模型）
+- Wan 对应的 MCP 工具定义见 `internal/tools/wan.go`，主要包括：
+  - `wan_create_generate_image_task`
+  - `wan_query_generate_image_task`
+  - `wan_create_edit_image_task`
+  - `wan_query_edit_image_task`
+
+`tests/mcp_client.py` 会根据 `GENAI_PROVIDER` 自动路由到 Gemini 或 Wan（默认 gemini，设置为 `wan` 即使用通义万相）。
+
 ---
 
 ### 1. 环境依赖
@@ -40,9 +59,20 @@
 **GenAI 配置**
 
 ```env
+# GenAI 提供方：
+# - gemini: Google Gemini / 兼容后端
+# - wan:    通义万相（阿里百炼）图片接口
+GENAI_PROVIDER=gemini
+
+# 共有的 GenAI 端点和密钥（Gemini / Wan 共用）
 GENAI_BASE_URL=https://generativelanguage.googleapis.com
 GENAI_API_KEY=your_api_key_here
-GENAI_MODEL_NAME=gemini-3-pro-image-preview
+
+# 模型名称：
+# - 当 GENAI_PROVIDER=gemini 时：如 gemini-3-pro-image-preview
+# - 当 GENAI_PROVIDER=wan 时：   如 wan2.5-t2i-preview / wan2.5-i2i-preview
+GENAI_GEN_MODEL_NAME=gemini-3-pro-image-preview
+GENAI_EDIT_MODEL_NAME=gemini-3-pro-image-preview
 
 # 单次请求超时时间（秒），包括生成图和编辑图
 GENAI_TIMEOUT_SECONDS=120

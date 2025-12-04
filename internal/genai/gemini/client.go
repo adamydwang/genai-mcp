@@ -3,18 +3,15 @@ package gemini
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/base64"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 
 	"genai-mcp/common"
 	"genai-mcp/internal/oss"
+	"genai-mcp/internal/utils"
 
-	"github.com/google/uuid"
 	"google.golang.org/genai"
 )
 
@@ -23,8 +20,10 @@ const defaultGenAITimeout = 60 * time.Second
 
 // Client Gemini 客户端实现
 type Client struct {
-	client           *genai.Client
-	model            string
+	client *genai.Client
+	// 分别用于生成与编辑的模型
+	generateModel    string
+	editModel        string
 	ossClient        oss.OSSIface
 	ossBucket        string
 	ossUploadEnabled bool
@@ -34,9 +33,13 @@ type Client struct {
 
 // Config Gemini 客户端配置
 type Config struct {
-	APIKey    string // API Key
-	BaseURL   string // 自定义 Base URL，如果为空则使用默认值
-	ModelName string // 模型名称，例如：gemini-2.0-flash-exp, gemini-3-pro-image-preview
+	APIKey  string // API Key
+	BaseURL string // 自定义 Base URL，如果为空则使用默认值
+	// 分别用于图片生成与图片编辑的模型名称，例如：
+	//   - 生成：gemini-3-pro-image-preview
+	//   - 编辑：gemini-3-pro-image-preview
+	GenerateModelName string // 文生图模型名称
+	EditModelName     string // 图片编辑模型名称
 	// OSS 配置（可选）
 	OSSClient        oss.OSSIface  // OSS 客户端，如果启用上传则需要
 	OSSBucket        string        // OSS 存储桶名称
@@ -51,8 +54,8 @@ func NewClient(cfg Config) (*Client, error) {
 		return nil, fmt.Errorf("API key is required")
 	}
 
-	if cfg.ModelName == "" {
-		return nil, fmt.Errorf("model name is required")
+	if cfg.GenerateModelName == "" && cfg.EditModelName == "" {
+		return nil, fmt.Errorf("at least one of generate or edit model name is required")
 	}
 
 	// 构建客户端配置
@@ -84,9 +87,20 @@ func NewClient(cfg Config) (*Client, error) {
 		timeout = defaultGenAITimeout
 	}
 
+	// 如果只配置了其中一个模型，另一个复用它，保持兼容
+	generateModel := cfg.GenerateModelName
+	editModel := cfg.EditModelName
+	if generateModel == "" {
+		generateModel = editModel
+	}
+	if editModel == "" {
+		editModel = generateModel
+	}
+
 	return &Client{
 		client:           client,
-		model:            cfg.ModelName,
+		generateModel:    generateModel,
+		editModel:        editModel,
 		ossClient:        cfg.OSSClient,
 		ossBucket:        cfg.OSSBucket,
 		ossUploadEnabled: cfg.OSSUploadEnabled,
@@ -104,7 +118,7 @@ func (c *Client) Close() error {
 // GenerateImage 文生图：根据文本提示生成图片
 func (c *Client) GenerateImage(ctx context.Context, prompt string) (string, error) {
 	common.WithFields(map[string]interface{}{
-		"model":  c.model,
+		"model":  c.generateModel,
 		"prompt": prompt,
 	}).Debug("Starting image generation")
 
@@ -119,12 +133,12 @@ func (c *Client) GenerateImage(ctx context.Context, prompt string) (string, erro
 	}
 
 	// 调用 GenerateContent API
-	result, err := c.client.Models.GenerateContent(ctx, c.model, []*genai.Content{
+	result, err := c.client.Models.GenerateContent(ctx, c.generateModel, []*genai.Content{
 		{Parts: parts},
 	}, nil)
 	if err != nil {
 		common.WithError(err).WithFields(map[string]interface{}{
-			"model":  c.model,
+			"model":  c.generateModel,
 			"prompt": prompt,
 		}).Error("Failed to generate image from Gemini API")
 		return "", fmt.Errorf("failed to generate image: %w", err)
@@ -177,7 +191,7 @@ func (c *Client) GenerateImage(ctx context.Context, prompt string) (string, erro
 	}
 
 	common.WithFields(map[string]interface{}{
-		"model":        c.model,
+		"model":        c.generateModel,
 		"mime_type":    mimeType,
 		"has_data":     len(imageData) > 0,
 		"image_format": c.imageFormat,
@@ -191,7 +205,7 @@ func (c *Client) GenerateImage(ctx context.Context, prompt string) (string, erro
 func (c *Client) EditImage(ctx context.Context, prompt string, imageURLs []string) (string, error) {
 	// 验证图片数量
 	maxImages := 1
-	if c.model == "gemini-3-pro-image-preview" {
+	if c.editModel == "gemini-3-pro-image-preview" {
 		maxImages = 14
 	}
 
@@ -200,11 +214,11 @@ func (c *Client) EditImage(ctx context.Context, prompt string, imageURLs []strin
 	}
 
 	if len(imageURLs) > maxImages {
-		return "", fmt.Errorf("too many images: model %s supports at most %d images, got %d", c.model, maxImages, len(imageURLs))
+		return "", fmt.Errorf("too many images: model %s supports at most %d images, got %d", c.editModel, maxImages, len(imageURLs))
 	}
 
 	common.WithFields(map[string]interface{}{
-		"model":       c.model,
+		"model":       c.editModel,
 		"prompt":      prompt,
 		"image_count": len(imageURLs),
 		"image_urls":  imageURLs,
@@ -238,7 +252,7 @@ func (c *Client) EditImage(ctx context.Context, prompt string, imageURLs []strin
 			imageData, err := base64.StdEncoding.DecodeString(dataURIParts[1])
 			if err != nil {
 				common.WithError(err).WithFields(map[string]interface{}{
-					"image_url": truncateForLog(imageURL, 100),
+					"image_url": utils.TruncateForLog(imageURL, 100),
 					"index":     i,
 				}).Error("Failed to decode data URI")
 				return "", fmt.Errorf("failed to decode data URI at index %d: %w", i, err)
@@ -259,7 +273,7 @@ func (c *Client) EditImage(ctx context.Context, prompt string, imageURLs []strin
 			}
 		} else if strings.HasPrefix(imageURL, "http://") || strings.HasPrefix(imageURL, "https://") {
 			// 处理 HTTP/HTTPS URL：直接使用 FileData，让 Gemini API 自己获取
-			mimeType := inferMimeTypeFromURL(imageURL)
+			mimeType := utils.InferMimeTypeFromURL(imageURL)
 
 			common.WithFields(map[string]interface{}{
 				"image_url": imageURL,
@@ -281,7 +295,7 @@ func (c *Client) EditImage(ctx context.Context, prompt string, imageURLs []strin
 				"index":     i,
 			}).Debug("Downloading image (unsupported URL format)")
 
-			imageData, mimeType, err := downloadImageFromURL(ctx, imageURL)
+			imageData, mimeType, err := utils.DownloadImageFromURL(ctx, imageURL)
 			if err != nil {
 				common.WithError(err).WithFields(map[string]interface{}{
 					"image_url": imageURL,
@@ -313,12 +327,12 @@ func (c *Client) EditImage(ctx context.Context, prompt string, imageURLs []strin
 	parts = append(parts, &genai.Part{Text: prompt})
 
 	// 调用 GenerateContent API
-	result, err := c.client.Models.GenerateContent(ctx, c.model, []*genai.Content{
+	result, err := c.client.Models.GenerateContent(ctx, c.editModel, []*genai.Content{
 		{Parts: parts},
 	}, nil)
 	if err != nil {
 		common.WithError(err).WithFields(map[string]interface{}{
-			"model":       c.model,
+			"model":       c.editModel,
 			"prompt":      prompt,
 			"image_count": len(imageURLs),
 		}).Error("Failed to edit image from Gemini API")
@@ -371,7 +385,7 @@ func (c *Client) EditImage(ctx context.Context, prompt string, imageURLs []strin
 	}
 
 	common.WithFields(map[string]interface{}{
-		"model":        c.model,
+		"model":        c.editModel,
 		"mime_type":    editedMimeType,
 		"has_data":     len(editedImageData) > 0,
 		"image_format": c.imageFormat,
@@ -407,7 +421,7 @@ func (c *Client) formatImageResult(ctx context.Context, imageResult string, imag
 			}
 
 			common.Debug("Converting URL to base64 format")
-			data, contentType, err := downloadImageFromURL(ctx, imageResult)
+			data, contentType, err := utils.DownloadImageFromURL(ctx, imageResult)
 			if err != nil {
 				common.WithError(err).Error("Failed to download image from URL for base64 conversion")
 				return "", fmt.Errorf("failed to download image: %w", err)
@@ -447,64 +461,14 @@ func (c *Client) formatImageResult(ctx context.Context, imageResult string, imag
 	}
 }
 
-// downloadImageFromURL 从 URL 下载图片
+// 保留旧函数名以兼容历史代码，同时转发到 common 包中的实现。
+// TODO: 后续可直接使用 common.DownloadImageFromURL / common.InferMimeTypeFromURL，并删除这些包装。
 func downloadImageFromURL(ctx context.Context, url string) ([]byte, string, error) {
-	// 创建 HTTP 客户端
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
-	// 创建请求
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, "", err
-	}
-
-	// 发送请求
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, "", fmt.Errorf("failed to download image: status code %d", resp.StatusCode)
-	}
-
-	// 读取图片数据
-	imageData, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, "", err
-	}
-
-	// 获取 Content-Type
-	mimeType := resp.Header.Get("Content-Type")
-	if mimeType == "" {
-		// 根据文件扩展名推断 MIME 类型
-		mimeType = inferMimeTypeFromURL(url)
-	}
-
-	return imageData, mimeType, nil
+	return utils.DownloadImageFromURL(ctx, url)
 }
 
-// inferMimeTypeFromURL 从 URL 推断 MIME 类型（不区分大小写）
 func inferMimeTypeFromURL(url string) string {
-	// 简单的 MIME 类型推断
-	if len(url) > 4 {
-		ext := strings.ToLower(url[len(url)-4:])
-		switch ext {
-		case ".jpg", "jpeg":
-			return "image/jpeg"
-		case ".png":
-			return "image/png"
-		case ".gif":
-			return "image/gif"
-		case ".webp":
-			return "image/webp"
-		}
-	}
-	// 默认返回 jpeg
-	return "image/jpeg"
+	return utils.InferMimeTypeFromURL(url)
 }
 
 // uploadImageToOSS 上传图片到 OSS
@@ -540,15 +504,15 @@ func (c *Client) uploadImageToOSS(ctx context.Context, imageResult string, image
 	} else {
 		// 处理 URL，需要下载图片
 		var err error
-		data, contentType, err = downloadImageFromURL(ctx, imageResult)
+		data, contentType, err = utils.DownloadImageFromURL(ctx, imageResult)
 		if err != nil {
 			return "", fmt.Errorf("failed to download image from URL: %w", err)
 		}
 	}
 
 	// 生成文件路径和名称
-	path := generateImagePath()
-	fileName := generateImageFileName(contentType)
+	path := utils.GenerateImagePath()
+	fileName := utils.GenerateImageFileName(contentType)
 	key := fmt.Sprintf("%s%s", path, fileName)
 
 	common.WithFields(map[string]interface{}{
@@ -576,61 +540,4 @@ func (c *Client) uploadImageToOSS(ctx context.Context, imageResult string, image
 	}).Debug("Image uploaded to OSS successfully")
 
 	return signedURL, nil
-}
-
-// generateImagePath 生成图片路径：images/yyyy-MM-dd/
-func generateImagePath() string {
-	now := time.Now()
-	// 格式：yyyy-MM-dd
-	return fmt.Sprintf("images/%s/", now.Format("2006-01-02"))
-}
-
-// generateImageFileName 生成图片文件名：{uuid_timestamp_random}
-func generateImageFileName(mimeType string) string {
-	// 生成 UUID
-	id := uuid.New().String()
-
-	// 生成时间戳
-	timestamp := time.Now().Unix()
-
-	// 生成随机字符串
-	randomBytes := make([]byte, 4)
-	rand.Read(randomBytes)
-	randomStr := fmt.Sprintf("%x", randomBytes)
-
-	// 根据 MIME 类型确定文件扩展名
-	ext := getExtensionFromMimeType(mimeType)
-
-	// 组合文件名：{uuid}_{timestamp}_{random}.ext
-	return fmt.Sprintf("%s_%d_%s%s", id, timestamp, randomStr, ext)
-}
-
-// getExtensionFromMimeType 根据 MIME 类型获取文件扩展名（不区分大小写）
-func getExtensionFromMimeType(mimeType string) string {
-	mt := strings.ToLower(mimeType)
-	switch mt {
-	case "image/jpeg", "image/jpg":
-		return ".jpg"
-	case "image/png":
-		return ".png"
-	case "image/gif":
-		return ".gif"
-	case "image/webp":
-		return ".webp"
-	case "image/bmp":
-		return ".bmp"
-	default:
-		return ".jpg" // 默认使用 jpg
-	}
-}
-
-// truncateForLog 截断长字符串用于日志，避免打印过长内容（如 base64）
-func truncateForLog(s string, max int) string {
-	if len(s) <= max {
-		return s
-	}
-	if max <= 3 {
-		return s[:max]
-	}
-	return s[:max-3] + "..."
 }

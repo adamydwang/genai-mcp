@@ -1,8 +1,8 @@
 ## GenAI MCP Server
 
-This project implements a **Model Context Protocol (MCP) server** for image generation and image editing using **Google Gemini** (via `google.golang.org/genai`), plus optional automatic upload of generated images to **S3‑compatible object storage** (AWS S3, Aliyun OSS, etc.).
+This project implements a **Model Context Protocol (MCP) server** for image generation and image editing using **Google Gemini** (via `google.golang.org/genai`) and **Tongyi Wanxiang (Ali Bailian)** image APIs, plus optional automatic upload of generated images to **S3‑compatible object storage** (AWS S3, Aliyun OSS, etc.).
 
-The server exposes a **streamable HTTP MCP endpoint** and provides two tools:
+The server exposes a **streamable HTTP MCP endpoint** and provides tools for Gemini and Wan:
 
 - `gemini_generate_image` – text → image
 - `gemini_edit_image` – image + text → edited image
@@ -21,6 +21,24 @@ This MCP server currently supports the following Gemini‑compatible backends:
    - `GENAI_API_KEY` is the key issued by dmxapi  
    - As long as the endpoint implements the `google.golang.org/genai` compatible Gemini API, no code changes are needed
 
+### Tongyi Wanxiang (Ali Bailian) backend support
+
+When `GENAI_PROVIDER=wan`, the server will use **Ali Bailian Tongyi Wanxiang** image APIs (via DashScope) instead of Gemini:
+
+- Set:
+  - `GENAI_PROVIDER=wan`
+  - `GENAI_BASE_URL=https://dashscope.aliyuncs.com`
+  - `GENAI_API_KEY=<your DashScope API key>`
+  - `GENAI_GEN_MODEL_NAME=wan2.5-t2i-preview` (text → image)
+  - `GENAI_EDIT_MODEL_NAME=wan2.5-i2i-preview` (image → image)
+- Wan provides a separate MCP tool set (see `internal/tools/wan.go`):
+  - `wan_create_generate_image_task`
+  - `wan_query_generate_image_task`
+  - `wan_create_edit_image_task`
+  - `wan_query_edit_image_task`
+
+The Python test client in `tests/mcp_client.py` will automatically route calls to Gemini or Wan based on `GENAI_PROVIDER` (`gemini` by default, `wan` for Tongyi Wanxiang).
+
 ---
 
 ### 1. Prerequisites
@@ -38,11 +56,22 @@ Copy `env.example` to `.env`, then fill in real values.
 **GenAI configuration**
 
 ```env
+# GenAI provider:
+# - gemini: Google Gemini / compatible backend
+# - wan:    Ali Bailian Tongyi Wanxiang image APIs
+GENAI_PROVIDER=gemini
+
+# Shared GenAI endpoint / key for both providers
 GENAI_BASE_URL=https://generativelanguage.googleapis.com
 GENAI_API_KEY=your_api_key_here
-GENAI_MODEL_NAME=gemini-3-pro-image-preview
 
-# Request timeout in seconds for each Gemini call (generate / edit)
+# Model names:
+# - When GENAI_PROVIDER=gemini: Gemini model names, e.g. gemini-3-pro-image-preview
+# - When GENAI_PROVIDER=wan:    Wanxiang model names, e.g. wan2.5-t2i-preview / wan2.5-i2i-preview
+GENAI_GEN_MODEL_NAME=gemini-3-pro-image-preview
+GENAI_EDIT_MODEL_NAME=gemini-3-pro-image-preview
+
+# Request timeout in seconds for each GenAI call (generate / edit)
 GENAI_TIMEOUT_SECONDS=120
 
 # Image output format:

@@ -10,11 +10,18 @@ import (
 
 // Config 应用配置结构
 type Config struct {
-	GenAIBaseURL   string
-	GenAIAPIKey    string
-	GenAIModelName string
-	ServerAddress  string
-	ServerPort     string
+	// GenAI 提供方: gemini 或 wan
+	GenAIProvider string
+
+	// 通用 GenAI 配置（Gemini 和 Wan 共用同一套 BaseURL / APIKey）
+	GenAIBaseURL string
+	GenAIAPIKey  string
+	// 分别用于图片生成与图片编辑的模型名称
+	GenAIGenModelName  string
+	GenAIEditModelName string
+
+	ServerAddress string
+	ServerPort    string
 	// OSS 配置
 	OSSEndpoint  string
 	OSSRegion    string
@@ -41,11 +48,13 @@ func LoadConfig() (*Config, error) {
 	}
 
 	config := &Config{
-		GenAIBaseURL:   getEnv("GENAI_BASE_URL", ""),
-		GenAIAPIKey:    getEnv("GENAI_API_KEY", ""),
-		GenAIModelName: getEnv("GENAI_MODEL_NAME", ""),
-		ServerAddress:  getEnv("SERVER_ADDRESS", "0.0.0.0"),
-		ServerPort:     getEnv("SERVER_PORT", "8080"),
+		GenAIProvider:      getEnv("GENAI_PROVIDER", "gemini"),
+		GenAIBaseURL:       getEnv("GENAI_BASE_URL", ""),
+		GenAIAPIKey:        getEnv("GENAI_API_KEY", ""),
+		GenAIGenModelName:  getEnv("GENAI_GEN_MODEL_NAME", ""),
+		GenAIEditModelName: getEnv("GENAI_EDIT_MODEL_NAME", ""),
+		ServerAddress:      getEnv("SERVER_ADDRESS", "0.0.0.0"),
+		ServerPort:         getEnv("SERVER_PORT", "8080"),
 		// OSS 配置
 		OSSEndpoint:         getEnv("OSS_ENDPOINT", ""),
 		OSSRegion:           getEnv("OSS_REGION", "us-east-1"),
@@ -61,9 +70,14 @@ func LoadConfig() (*Config, error) {
 		LogFile:   getEnv("LOG_FILE", ""),
 	}
 
-	// 验证必需的配置项
-	if config.GenAIAPIKey == "" {
-		return nil, fmt.Errorf("GENAI_API_KEY is required")
+	// 根据提供方校验必需的配置（Gemini 和 Wan 共用 GENAI_* 三个字段）
+	switch config.GenAIProvider {
+	case "wan", "gemini":
+		if config.GenAIAPIKey == "" {
+			return nil, fmt.Errorf("GENAI_API_KEY is required when GENAI_PROVIDER=%s", config.GenAIProvider)
+		}
+	default:
+		return nil, fmt.Errorf("unsupported GENAI_PROVIDER: %s", config.GenAIProvider)
 	}
 
 	// 初始化日志系统

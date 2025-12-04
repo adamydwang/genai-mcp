@@ -22,13 +22,14 @@ func NewGeminiClientFromConfig(cfg *common.Config) (*GeminiClient, error) {
 	ossUploadEnabled := strings.EqualFold(cfg.GenAIImageFormat, "url")
 
 	config := Config{
-		APIKey:           cfg.GenAIAPIKey,
-		BaseURL:          cfg.GenAIBaseURL,
-		ModelName:        cfg.GenAIModelName,
-		OSSUploadEnabled: ossUploadEnabled,
-		OSSBucket:        cfg.OSSBucket,
-		ImageFormat:      cfg.GenAIImageFormat,
-		Timeout:          time.Duration(cfg.GenAITimeoutSeconds) * time.Second,
+		APIKey:            cfg.GenAIAPIKey,
+		BaseURL:           cfg.GenAIBaseURL,
+		GenerateModelName: cfg.GenAIGenModelName,
+		EditModelName:     cfg.GenAIEditModelName,
+		OSSUploadEnabled:  ossUploadEnabled,
+		OSSBucket:         cfg.OSSBucket,
+		ImageFormat:       cfg.GenAIImageFormat,
+		Timeout:           time.Duration(cfg.GenAITimeoutSeconds) * time.Second,
 	}
 
 	// 如果启用了 OSS 上传，创建 OSS 客户端
