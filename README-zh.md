@@ -19,7 +19,7 @@
    - 使用默认 `GENAI_BASE_URL=https://generativelanguage.googleapis.com`  
    - `GENAI_API_KEY` 为 Google 官方 Gemini API Key
 
-2. **dmxapi（兼容 Gemini 的第三方网关, 对于Nano Banana Pro容易超时）**  
+2. **dmxapi（兼容 Gemini 的第三方网关）**  
    - 将 `GENAI_BASE_URL` 配置为 dmxapi 提供的 Gemini 兼容地址（如 `https://www.dmxapi.cn`）  
    - `GENAI_API_KEY` 使用 dmxapi 下发的密钥
 
