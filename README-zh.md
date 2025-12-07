@@ -1,4 +1,4 @@
-<h1>Nano Banana: GenAI MCP Server for Image Generation</h1>
+<h1>genai-mcp: GenAI MCP Server for Image Generation(eg. Nano Banana)</h1>
 
 
 ## GenAI MCP 服务器（中文说明）
