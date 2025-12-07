@@ -1,3 +1,5 @@
+<h1>Nano Banana: GenAI MCP Server for Image Generation</h1>
+
 ## GenAI MCP Server
 
 This project implements a **Model Context Protocol (MCP) server** for image generation and image editing using **Google Gemini** (via `google.golang.org/genai`) and **Tongyi Wanxiang (Ali Bailian)** image APIs, plus optional automatic upload of generated images to **S3‑compatible object storage** (AWS S3, Aliyun OSS, etc.).

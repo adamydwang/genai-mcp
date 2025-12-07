@@ -1,3 +1,6 @@
+<h1>Nano Banana: GenAI MCP Server for Image Generation</h1>
+
+
 ## GenAI MCP 服务器（中文说明）
 
 本项目实现了一个 **Model Context Protocol (MCP)** 服务器，用于：
