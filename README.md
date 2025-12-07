@@ -183,3 +183,9 @@ When `GENAI_IMAGE_FORMAT=url`:
   ![WeChat QR Code](assets/wechat_qrcode.png)
 
 - **Discord**: Username `adamydwang`
+
+---
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=adamydwang/genai-mcp&type=Date)](https://star-history.com/#adamydwang/genai-mcp)

@@ -187,3 +187,9 @@ http://127.0.0.1:8080/mcp
   ![微信二维码](assets/wechat_qrcode.png)
 
 - **Discord**：用户名 `adamydwang`
+
+---
+
+## Star 历史
+
+[![Star History Chart](https://api.star-history.com/svg?repos=adamydwang/genai-mcp&type=Date)](https://star-history.com/#adamydwang/genai-mcp)
