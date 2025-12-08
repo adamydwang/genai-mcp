@@ -8,12 +8,12 @@ The server exposes a **streamable HTTP MCP endpoint** and provides tools for Gem
 
 ### Provider matrix
 
-| Provider | Example models | Config | Notes |
+| Provider | Supported Models | Config | Notes |
 | --- | --- | --- | --- |
-| google | `gemini-3-pro-image-preview`, `gemini-2.5-flash-image` | `GENAI_PROVIDER=gemini`<br>`GENAI_BASE_URL=https://generativelanguage.googleapis.com` | Official Gemini |
-| dmxapi | `gemini-3-pro-image-preview`, `gemini-2.5-flash-image` | `GENAI_PROVIDER=gemini`<br>`GENAI_BASE_URL=https://www.dmxapi.cn` | Gemini‑compatible gateway |
-| aliyun | `wan2.5-i2i-preview`, `wan2.5-t2i-preview` | `GENAI_PROVIDER=wan`<br>`GENAI_BASE_URL=https://dashscope.aliyuncs.com` | Tongyi Wanxiang |
-| apimart | `gemini-3-pro-image-preview` | `GENAI_PROVIDER=apimart`<br>`GENAI_BASE_URL=https://api.apimart.ai` | APIMart Gemini wrapper (cost‑effective) |
+| google | · `gemini-3-pro-image-preview` <br> · `gemini-2.5-flash-image` | `GENAI_PROVIDER=gemini`<br>`GENAI_BASE_URL=https://generativelanguage.googleapis.com` | Official Gemini |
+| dmxapi | · `gemini-3-pro-image-preview` <br> · `gemini-2.5-flash-image` | `GENAI_PROVIDER=gemini`<br>`GENAI_BASE_URL=https://www.dmxapi.cn` | Gemini‑compatible gateway |
+| aliyun | · `wan2.5-i2i-preview` <br> · `wan2.5-t2i-preview` | `GENAI_PROVIDER=wan`<br>`GENAI_BASE_URL=https://dashscope.aliyuncs.com` | Tongyi Wanxiang |
+| apimart | · `gemini-3-pro-image-preview` | `GENAI_PROVIDER=apimart`<br>`GENAI_BASE_URL=https://api.apimart.ai` | APIMart Gemini wrapper (cost‑effective) |
 
 ---
 
