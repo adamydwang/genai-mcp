@@ -1,49 +1,24 @@
 <h1>genai-mcp: GenAI MCP Server for Image Generation(eg. Nano Banana)</h1>
 
 
-## GenAI MCP 服务器（中文说明）
+## GenAI MCP 服务器
 
-本项目实现了一个 **Model Context Protocol (MCP)** 服务器，用于：
+本项目实现了一个 **Model Context Protocol (MCP)** 服务器，用于方便快捷的为用户实现图片生成和图片编辑服务。
 
-- 使用 **Google Gemini**（通过 `google.golang.org/genai`）进行 **文生图**（generate image）
-- 使用 **Google Gemini** 进行 **图像编辑**（edit image）
-- 使用 **通义万相（阿里百炼）** 图片接口进行文生图 / 图像编辑（通过 DashScope）
+- 使用 **Google Gemini / 通义万相等GenAI服务** 进行 **文生图**（generate image）
+- 使用 **Google Gemini / 通义万相等主流GenAI服务** 进行 **图像编辑**（edit image）
 - 可选：将生成 / 编辑后的图片自动上传到 **S3 兼容对象存储**（如 AWS S3、阿里云 OSS 等），并返回图片 URL
 
-服务器通过 **streamable HTTP** 暴露 MCP 端点，并提供两个工具：
+服务器通过 **streamable HTTP** 暴露 MCP 端点。
 
-- `gemini_generate_image` – 文本 → 图片
-- `gemini_edit_image` – （图片 + 文本）→ 新图片
+### 模型类型和第三方提供商支持情况
 
-### Gemini / Nano Banana 第三方支持情况
-
-当前 MCP 服务器支持以下 Gemini / Nano Banana 后端：
-
-1. **Google 官方 Gemini API**  
-   - 使用默认 `GENAI_BASE_URL=https://generativelanguage.googleapis.com`  
-   - `GENAI_API_KEY` 为 Google 官方 Gemini API Key
-
-2. **dmxapi（兼容 Gemini 的第三方网关）**  
-   - 将 `GENAI_BASE_URL` 配置为 dmxapi 提供的 Gemini 兼容地址（如 `https://www.dmxapi.cn`）  
-   - `GENAI_API_KEY` 使用 dmxapi 下发的密钥
-
-### 通义万相（阿里百炼）模型支持
-
-当 `GENAI_PROVIDER=wan` 时，服务器会使用 **通义万相**（阿里百炼 DashScope）而不是 Gemini：
-
-- 配置示例：
-  - `GENAI_PROVIDER=wan`
-  - `GENAI_BASE_URL=https://dashscope.aliyuncs.com`
-  - `GENAI_API_KEY=<你的 DashScope API Key>`
-  - `GENAI_GEN_MODEL_NAME=wan2.5-t2i-preview`（文生图模型）
-  - `GENAI_EDIT_MODEL_NAME=wan2.5-i2i-preview`（图像编辑 / 融合模型）
-- Wan 对应的 MCP 工具定义见 `internal/tools/wan.go`，主要包括：
-  - `wan_create_generate_image_task`
-  - `wan_query_generate_image_task`
-  - `wan_create_edit_image_task`
-  - `wan_query_edit_image_task`
-
-`tests/mcp_client.py` 会根据 `GENAI_PROVIDER` 自动路由到 Gemini 或 Wan（默认 gemini，设置为 `wan` 即使用通义万相）。
+| 提供商 | 模型名 | 对应配置文件 | 说明 |
+|-------|--------|-----------|-----|
+| google | · `gemini-3-pro-image-preview` <br>· `gemini-2.5-flash-image` | `GENAI_PROVIDER=gemini` <br> `GENAI_BASE_URL=https://generativelanguage.googleapis.com` | 谷歌官方, 中国用不了 |
+| dmxapi | · `gemini-3-pro-image-preview` <br>· `gemini-2.5-flash-image` | `GENAI_PROVIDER=gemini` <br> `GENAI_BASE_URL=https://www.dmxapi.cn` | dmxapi对api的封装完全兼容官方genai sdk |
+| aliyun | · `wan2.5-i2i-preview` <br>· `wan2.5-t2i-preview` | `GENAI_PROVIDER=wan` <br> `GENAI_BASE_URL=https://dashscope.aliyuncs.com` | 阿里云官方的通义万相 |
+| apimart | · `gemini-3-pro-image-preview` | `GENAI_PROVIDER=apimart` <br> `GENAI_BASE_URL=https://api.apimart.ai` | apimart对接口重新进行了封装，更简洁，<span style="color: red; font-weight: bold;">目前价格最便宜</span> |
 
 ---
 
@@ -189,7 +164,7 @@ http://127.0.0.1:8080/mcp
 
   ![微信二维码](assets/wechat_qrcode.png)
 
-- **Discord**：用户名 `adamydwang`
+- **Discord**：<img src="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f916.svg" alt="discord" width="18" height="18" style="vertical-align:middle;"> [加入社区](https://discord.gg/PHfCTksx)
 
 ---
 

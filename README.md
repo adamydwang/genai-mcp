@@ -1,52 +1,26 @@
-<h1>genai-mcp: GenAI MCP Server for Image Generation(eg. Nano Banana)</h1>
+<h1>genai-mcp: GenAI MCP Server for Image Generation (e.g. Nano Banana)</h1>
 
 ## GenAI MCP Server
 
-This project implements a **Model Context Protocol (MCP) server** for image generation and image editing using **Google Gemini** (via `google.golang.org/genai`) and **Tongyi Wanxiang (Ali Bailian)** image APIs, plus optional automatic upload of generated images to **S3‑compatible object storage** (AWS S3, Aliyun OSS, etc.).
+This project implements a **Model Context Protocol (MCP) server** for image generation and image editing using **Google Gemini**, **Tongyi Wanxiang**, plus optional automatic upload of generated images to **S3‑compatible object storage** (AWS S3, Aliyun OSS, etc.).
 
-The server exposes a **streamable HTTP MCP endpoint** and provides tools for Gemini and Wan:
+The server exposes a **streamable HTTP MCP endpoint** and provides tools for Gemini, Wan, and APIMart.
 
-- `gemini_generate_image` – text → image
-- `gemini_edit_image` – image + text → edited image
+### Provider matrix
 
-
-### Gemini / Nano Banana backend support
-
-This MCP server currently supports the following Gemini‑compatible backends:
-
-1. **Google official Gemini API**  
-   - Use the default `GENAI_BASE_URL=https://generativelanguage.googleapis.com`  
-   - `GENAI_API_KEY` is a Google Gemini API key
-
-2. **dmxapi (Gemini‑compatible third‑party gateway)**  
-   - Set `GENAI_BASE_URL` to the dmxapi Gemini endpoint (for example `https://www.dmxapi.cn`)  
-   - `GENAI_API_KEY` is the key issued by dmxapi  
-   - As long as the endpoint implements the `google.golang.org/genai` compatible Gemini API, no code changes are needed
-
-### Tongyi Wanxiang (Ali Bailian) backend support
-
-When `GENAI_PROVIDER=wan`, the server will use **Ali Bailian Tongyi Wanxiang** image APIs (via DashScope) instead of Gemini:
-
-- Set:
-  - `GENAI_PROVIDER=wan`
-  - `GENAI_BASE_URL=https://dashscope.aliyuncs.com`
-  - `GENAI_API_KEY=<your DashScope API key>`
-  - `GENAI_GEN_MODEL_NAME=wan2.5-t2i-preview` (text → image)
-  - `GENAI_EDIT_MODEL_NAME=wan2.5-i2i-preview` (image → image)
-- Wan provides a separate MCP tool set (see `internal/tools/wan.go`):
-  - `wan_create_generate_image_task`
-  - `wan_query_generate_image_task`
-  - `wan_create_edit_image_task`
-  - `wan_query_edit_image_task`
-
-The Python test client in `tests/mcp_client.py` will automatically route calls to Gemini or Wan based on `GENAI_PROVIDER` (`gemini` by default, `wan` for Tongyi Wanxiang).
+| Provider | Example models | Config | Notes |
+| --- | --- | --- | --- |
+| google | `gemini-3-pro-image-preview`, `gemini-2.5-flash-image` | `GENAI_PROVIDER=gemini`<br>`GENAI_BASE_URL=https://generativelanguage.googleapis.com` | Official Gemini |
+| dmxapi | `gemini-3-pro-image-preview`, `gemini-2.5-flash-image` | `GENAI_PROVIDER=gemini`<br>`GENAI_BASE_URL=https://www.dmxapi.cn` | Gemini‑compatible gateway |
+| aliyun | `wan2.5-i2i-preview`, `wan2.5-t2i-preview` | `GENAI_PROVIDER=wan`<br>`GENAI_BASE_URL=https://dashscope.aliyuncs.com` | Tongyi Wanxiang |
+| apimart | `gemini-3-pro-image-preview` | `GENAI_PROVIDER=apimart`<br>`GENAI_BASE_URL=https://api.apimart.ai` | APIMart Gemini wrapper (cost‑effective) |
 
 ---
 
 ### 1. Prerequisites
 
-- Go **1.21+** (recommended; `go.mod` uses module mode)
-- A valid Gemini API key
+- Go **1.21+** (recommended)
+- A valid Gemini (or provider) API key
 - Optional: S3 / OSS bucket for storing images
 
 ---
@@ -61,15 +35,17 @@ Copy `env.example` to `.env`, then fill in real values.
 # GenAI provider:
 # - gemini: Google Gemini / compatible backend
 # - wan:    Ali Bailian Tongyi Wanxiang image APIs
+# - apimart: APIMart (Gemini-wrapped async image APIs)
 GENAI_PROVIDER=gemini
 
-# Shared GenAI endpoint / key for both providers
+# Shared GenAI endpoint / key for all providers
 GENAI_BASE_URL=https://generativelanguage.googleapis.com
 GENAI_API_KEY=your_api_key_here
 
 # Model names:
 # - When GENAI_PROVIDER=gemini: Gemini model names, e.g. gemini-3-pro-image-preview
 # - When GENAI_PROVIDER=wan:    Wanxiang model names, e.g. wan2.5-t2i-preview / wan2.5-i2i-preview
+# - When GENAI_PROVIDER=apimart: Gemini image model name, e.g. gemini-3-pro-image-preview
 GENAI_GEN_MODEL_NAME=gemini-3-pro-image-preview
 GENAI_EDIT_MODEL_NAME=gemini-3-pro-image-preview
 
@@ -89,7 +65,7 @@ SERVER_ADDRESS=0.0.0.0
 SERVER_PORT=8080
 ```
 
-MCP endpoint will listen on:
+MCP endpoint:
 
 ```text
 http://SERVER_ADDRESS:SERVER_PORT/mcp
@@ -111,9 +87,7 @@ OSS_BUCKET=your_bucket_name
 
 When `GENAI_IMAGE_FORMAT=url`:
 
-- For **Aliyun OSS**: make sure
-  - `OSS_ENDPOINT` is like `oss-cn-beijing.aliyuncs.com`
-  - The bucket policy allows read access if you expect the returned URL to be publicly accessible
+- For **Aliyun OSS**: ensure `OSS_ENDPOINT` like `oss-cn-beijing.aliyuncs.com` and bucket policy allows expected read access.
 
 ---
 
@@ -134,47 +108,54 @@ You can run the MCP server in **two ways**:
 2. **Download release binary**
    - Download the appropriate binary from the Releases page  
    - Place it in a directory of your choice  
-   - Copy `env.example` from this repo (or from the release asset) to `.env` in the same directory and update configuration  
+   - Copy `env.example` (from repo or release asset) to `.env` and update configuration  
    - Run (binary name may vary by platform):
 
      ```bash
      ./genai-mcp
      ```
 
-By default the MCP HTTP endpoint will be:
+Default MCP HTTP endpoint:
 
 ```text
 http://127.0.0.1:8080/mcp
 ```
 
-You can connect to this MCP endpoint from any MCP‑compatible client (e.g. Code editors or tools that support the streamable HTTP MCP transport).
+Connect from any MCP‑compatible client supporting streamable HTTP transport.
 
 ---
 
 ### 4. MCP Tools
 
-The server registers two tools in `internal/tools/gemini.go`:
+#### Gemini tools (`internal/tools/gemini.go`)
 
 - **`gemini_generate_image`**
-  - **Input**:
-    - `prompt` (string, required): text prompt describing the image
-  - **Output**:
-    - When `GENAI_IMAGE_FORMAT=base64`: a `data:image/...;base64,...` string
-    - When `GENAI_IMAGE_FORMAT=url`: an OSS/S3 URL generated by the server
+  - **Input**: `prompt` (string, required)
+  - **Output**: base64 data URI or URL (optional OSS upload)
 
 - **`gemini_edit_image`**
-  - **Input**:
-    - `prompt` (string, required): how to edit the image
-    - `image_url` (string, required): original image URL or data URI
-  - **Output**:
-    - Same format as above (`base64` or `url`), depending on configuration
+  - **Input**: `prompt` (required), `image_urls` (required, JSON array)
+  - **Output**: base64 data URI or URL
 
-When `GENAI_IMAGE_FORMAT=url`:
+When `GENAI_IMAGE_FORMAT=url`, images are downloaded/decoded then uploaded to OSS/S3 under `images/yyyy-MM-dd/{uuid_timestamp_random}.ext`.
 
-- Generated / edited images are:
-  - Downloaded (if Gemini returns a URL), or decoded (if it returns inline data)
-  - Re‑uploaded to OSS / S3
-  - Stored under key pattern: `images/yyyy-MM-dd/{uuid_timestamp_random}.ext`
+#### Wan tools (`internal/tools/wan.go`)
+
+- `wan_create_generate_image_task`
+- `wan_query_generate_image_task`
+- `wan_create_edit_image_task`
+- `wan_query_edit_image_task`
+
+Wan is async; create a task then poll for completion.
+
+#### APIMart tools (`internal/tools/apimart.go`)
+
+- `apimart_create_generate_image_task`
+- `apimart_query_generate_image_task`
+- `apimart_create_edit_image_task`
+- `apimart_query_edit_image_task`
+
+APIMart is async; tools return the final image (URL or base64) once the task is completed.
 
 ---
 
@@ -184,7 +165,7 @@ When `GENAI_IMAGE_FORMAT=url`:
 
   ![WeChat QR Code](assets/wechat_qrcode.png)
 
-- **Discord**: Username `adamydwang`
+- **Discord**: <img src="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f916.svg" alt="discord" width="18" height="18" style="vertical-align:middle;"> [Join the community](https://discord.gg/PHfCTksx)
 
 ---
 

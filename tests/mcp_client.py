@@ -157,7 +157,7 @@ class MCPClient:
         }
         return self._send_request("tools/call", params)
 
-    # ---------- Wan helper methods ----------
+    # ---------- Wan and APIMart helper methods ----------
 
     def _extract_text_from_mcp_result(self, response: Dict[str, Any]) -> Optional[str]:
         """
@@ -213,6 +213,127 @@ class MCPClient:
                 return status
 
         return None
+
+    def _parse_apimart_task_status(self, raw_json_text: str) -> Optional[str]:
+        """
+        Parse APIMart async task status from the raw JSON string returned by APIMart APIs.
+
+        APIMart response format:
+          - {"code": 200, "data": {"status": "SUCCEEDED", ...}}
+          - {"code": 200, "data": {"status": "FAILED", ...}}
+
+        Returns:
+            status string (e.g. "SUCCEEDED", "FAILED", "RUNNING") or None if not found.
+        """
+        try:
+            data = json.loads(raw_json_text)
+        except Exception:
+            return None
+
+        # APIMart uses "data" field with "status" inside
+        if isinstance(data, dict) and "data" in data:
+            data_obj = data["data"]
+            if isinstance(data_obj, dict):
+                status = (
+                    data_obj.get("status")
+                    or data_obj.get("task_status")
+                    or data_obj.get("state")
+                )
+                if isinstance(status, str):
+                    return status
+
+        # Fall back to top-level fields
+        if isinstance(data, dict):
+            status = (
+                data.get("status")
+                or data.get("task_status")
+                or data.get("state")
+            )
+            if isinstance(status, str):
+                return status
+
+        return None
+
+    def _poll_apimart_task(
+        self,
+        query_tool: str,
+        task_id: str,
+        *,
+        max_attempts: int = 30,
+        interval_seconds: float = 10.0,
+    ) -> Dict[str, Any]:
+        """
+        Poll an APIMart async task until it reaches a terminal state or times out.
+
+        Args:
+            query_tool: MCP tool name for querying (e.g. "apimart_query_generate_image_task")
+            task_id: APIMart task ID
+            max_attempts: maximum number of query attempts
+            interval_seconds: interval between attempts in seconds
+
+        Returns:
+            The last MCP response from the query tool.
+        """
+        terminal_success = {"succeeded", "success", "finished", "done", "completed"}
+        terminal_failed = {"failed", "error", "canceled", "cancelled"}
+
+        last_response: Optional[Dict[str, Any]] = None
+
+        for _ in range(max_attempts):
+            resp = self.call_tool(query_tool, {"task_id": task_id})
+            last_response = resp
+
+            # If MCP-level error
+            if "error" in resp:
+                msg = str(resp.get("error", {}).get("message", "")).lower()
+                # 未完成则继续轮询
+                if "not completed" in msg or "status=" in msg:
+                    time.sleep(interval_seconds)
+                    continue
+                return resp
+
+            text = self._extract_text_from_mcp_result(resp)
+            if not text:
+                # No text content; wait and retry
+                time.sleep(interval_seconds)
+                continue
+
+            # 如果返回的是最终图片 URL 或 data URI，则视为任务完成
+            lower_text = text.lower()
+            if lower_text.startswith("http://") or lower_text.startswith("https://") or lower_text.startswith("data:"):
+                return resp
+
+            # 未完成提示 -> 继续轮询
+            if "not completed" in lower_text or "status=" in lower_text:
+                time.sleep(interval_seconds)
+                continue
+
+            # 尝试解析状态（兼容旧格式）
+            status = self._parse_apimart_task_status(text)
+            if status:
+                normalized = status.lower()
+                if normalized in terminal_success or any(
+                    normalized.startswith(s) for s in terminal_success
+                ):
+                    return resp
+                if normalized in terminal_failed or any(
+                    normalized.startswith(s) for s in terminal_failed
+                ):
+                    return resp
+                # 其它状态继续轮询
+                time.sleep(interval_seconds)
+                continue
+
+            # 其他文本无法判断，直接返回供上层处理
+            return resp
+
+        # Reached max attempts; return the last response we got
+        return last_response or {
+            "error": {
+                "code": -32603,
+                "message": f"APIMart task polling exceeded max attempts ({max_attempts})",
+            }
+        }
 
     def _poll_wan_task(
         self,
@@ -294,7 +415,41 @@ class MCPClient:
             - Extracts task_id from the text result.
             - Calls wan_query_generate_image_task once with the task_id and returns that response.
               (The actual image URL is contained in the raw JSON text returned by the Wan API.)
+        
+        For provider == "apimart":
+            - Calls apimart_create_generate_image_task to create an async task.
+            - Extracts task_id from the text result.
+            - Polls apimart_query_generate_image_task until completion and returns the response.
+              (The actual image URL is contained in the raw JSON text returned by the APIMart API.)
         """
+        if self.provider == "apimart":
+            # 1) Create generate-image task
+            create_resp = self.call_tool(
+                "apimart_create_generate_image_task",
+                {"prompt": prompt},
+            )
+            # If the server already returned an MCP-level error, surface it directly
+            if "error" in create_resp:
+                return create_resp
+
+            try:
+                # Extract "generate_image task_id: <id>" from the text content
+                text = self._extract_text_from_mcp_result(create_resp) or ""
+                prefix = "generate_image task_id:"
+                if not text.startswith(prefix):
+                    # Unexpected format; return as-is so caller can inspect
+                    return create_resp
+                task_id = text[len(prefix):].strip()
+            except Exception:
+                # If parsing fails, return original response so caller can debug
+                return create_resp
+
+            # 2) Poll generate-image task until completion or failure
+            return self._poll_apimart_task(
+                "apimart_query_generate_image_task",
+                task_id,
+            )
+
         if self.provider == "wan":
             # 1) Create generate-image task
             create_resp = self.call_tool(
@@ -340,7 +495,53 @@ class MCPClient:
                 * Call wan_create_edit_image_task to create an async task.
                 * Extract task_id from the text result.
                 * Call wan_query_edit_image_task once with the task_id and return that response.
+        
+        For provider == "apimart":
+            - APIMart supports image URLs or base64 data URIs and multiple images.
+            - This method will:
+                * Call apimart_create_edit_image_task with image_urls (JSON array).
+                * Extract task_id from the text result.
+                * Poll apimart_query_edit_image_task until completion and return the response.
         """
+        if self.provider == "apimart":
+            if not image_urls:
+                return {
+                    "error": {
+                        "code": -32602,
+                        "message": "At least one image URL is required for APIMart edit_image",
+                    }
+                }
+
+            # Convert list to JSON string as required by the MCP tool
+            image_urls_json = json.dumps(image_urls)
+
+            # 1) Create edit-image task
+            create_resp = self.call_tool(
+                "apimart_create_edit_image_task",
+                {
+                    "prompt": prompt,
+                    "image_urls": image_urls_json,
+                },
+            )
+            if "error" in create_resp:
+                return create_resp
+
+            try:
+                # Extract "edit_image task_id: <id>" from the text content
+                text = self._extract_text_from_mcp_result(create_resp) or ""
+                prefix = "edit_image task_id:"
+                if not text.startswith(prefix):
+                    return create_resp
+                task_id = text[len(prefix):].strip()
+            except Exception:
+                return create_resp
+
+            # 2) Poll edit-image task until completion or failure
+            return self._poll_apimart_task(
+                "apimart_query_edit_image_task",
+                task_id,
+            )
+
         if self.provider == "wan":
             if not image_urls:
                 return {

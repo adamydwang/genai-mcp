@@ -10,7 +10,7 @@ import (
 
 // Config 应用配置结构
 type Config struct {
-	// GenAI 提供方: gemini 或 wan
+	// GenAI 提供方: gemini、wan 或 apimart
 	GenAIProvider string
 
 	// 通用 GenAI 配置（Gemini 和 Wan 共用同一套 BaseURL / APIKey）
@@ -70,9 +70,9 @@ func LoadConfig() (*Config, error) {
 		LogFile:   getEnv("LOG_FILE", ""),
 	}
 
-	// 根据提供方校验必需的配置（Gemini 和 Wan 共用 GENAI_* 三个字段）
+	// 根据提供方校验必需的配置（Gemini、Wan 和 APIMart 共用 GENAI_* 三个字段）
 	switch config.GenAIProvider {
-	case "wan", "gemini":
+	case "wan", "gemini", "apimart":
 		if config.GenAIAPIKey == "" {
 			return nil, fmt.Errorf("GENAI_API_KEY is required when GENAI_PROVIDER=%s", config.GenAIProvider)
 		}

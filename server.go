@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"genai-mcp/common"
+	"genai-mcp/internal/genai/apimart"
 	"genai-mcp/internal/genai/gemini"
 	"genai-mcp/internal/genai/wan"
 	"genai-mcp/internal/tools"
@@ -60,6 +61,21 @@ func main() {
 			common.WithError(err).Fatal("Failed to register Wan tools")
 		}
 		common.Info("Wan tools registered successfully")
+	case "apimart":
+		// 初始化 APIMart 客户端并注册 APIMart tools
+		common.Info("Initializing APIMart client")
+		apimartClient, err := apimart.NewApimartClientFromConfig(config)
+		if err != nil {
+			common.WithError(err).Fatal("Failed to create APIMart client")
+		}
+		defer apimartClient.Close()
+		common.Info("APIMart client initialized successfully")
+
+		common.Info("Registering APIMart tools")
+		if err := tools.RegisterApimartTools(mcpServer, apimartClient); err != nil {
+			common.WithError(err).Fatal("Failed to register APIMart tools")
+		}
+		common.Info("APIMart tools registered successfully")
 	default:
 		// 默认使用 Gemini
 		common.Info("Initializing Gemini client")
